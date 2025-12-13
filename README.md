@@ -99,6 +99,8 @@ docker-compose up --build
 - Tests: `cd server && mvn test`
 - Health check: `curl http://localhost:8080/actuator/health`
 
+> **Note:** Use JDK 17 for local Maven builds. Using newer JDKs (e.g., 21/23) can trigger `TypeTag :: UNKNOWN` javac errors with Lombok; Docker Compose already uses the correct JDK.
+
 ### API Documentation (Swagger)
 1) Start services, then open [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
 2) Click **Authorize** and paste your JWT (no `Bearer ` prefix needed)
