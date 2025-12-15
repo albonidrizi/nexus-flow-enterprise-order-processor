@@ -41,6 +41,9 @@ class OrderControllerTest {
     @MockBean
     private OrderService orderService;
 
+        @MockBean
+        private com.nexusflow.server.config.JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private Order order;
     private OrderDto.OrderRequest orderRequest;
 
