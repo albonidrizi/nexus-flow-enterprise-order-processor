@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { Role } from '../types/auth';
 
 interface ProtectedRouteProps {
@@ -11,7 +11,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
     const { isAuthenticated, user, isLoading } = useAuth();
 
     if (isLoading) {
-        return <div>Loading...</div>;
+        return <div className="screen-loader">Loading...</div>;
     }
 
     if (!isAuthenticated) {

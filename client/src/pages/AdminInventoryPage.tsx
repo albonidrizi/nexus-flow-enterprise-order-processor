@@ -1,92 +1,232 @@
-import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import api from '../api/axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
+import { OrderStatus, Role } from '../types/auth';
+import type { Order, Page, Product } from '../types/auth';
 
-interface Product {
-    id: number;
-    name: string;
-    price: number;
-    quantity: number;
-    version: number;
-}
+const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+const errorMessage = (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.message || error.message;
+  }
+  return 'Unexpected error';
+};
+
+const nextOperationalStatuses = (status: OrderStatus) => {
+  if (status === OrderStatus.PAID) {
+    return [OrderStatus.PROCESSING, OrderStatus.CANCELLED];
+  }
+  if (status === OrderStatus.PROCESSING) {
+    return [OrderStatus.SHIPPED];
+  }
+  if (status === OrderStatus.SHIPPED) {
+    return [OrderStatus.DELIVERED];
+  }
+  if (status === OrderStatus.CREATED || status === OrderStatus.VALIDATED) {
+    return [OrderStatus.CANCELLED];
+  }
+  return [];
+};
+
+const terminalStatuses: OrderStatus[] = [OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.FAILED];
 
 const AdminInventoryPage = () => {
-    const { logout } = useAuth();
-    const [products, setProducts] = useState<Product[]>([]);
-    const [newProduct, setNewProduct] = useState({ name: '', price: 0, quantity: 10 });
+  const { user, logout } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [newProduct, setNewProduct] = useState({ name: '', price: 0, quantity: 10 });
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchInventory = () => {
-        api.get<Product[]>('/admin/inventory')
-            .then(res => setProducts(res.data))
-            .catch(console.error);
-    };
+  const isAdmin = user?.role === Role.ROLE_ADMIN;
 
-    useEffect(() => {
-        fetchInventory();
-    }, []);
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [inventoryResponse, ordersResponse] = await Promise.all([
+        api.get<Product[]>('/admin/inventory'),
+        api.get<Page<Order>>('/orders?size=25&sort=createdAt,desc'),
+      ]);
+      setProducts(inventoryResponse.data);
+      setOrders(ordersResponse.data.content);
+    } catch (error) {
+      setMessage(`Load failed: ${errorMessage(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-    const handleCreate = async (e: FormEvent) => {
-        e.preventDefault();
-        try {
-            await api.post('/admin/products', newProduct);
-            fetchInventory();
-            setNewProduct({ name: '', price: 0, quantity: 10 });
-        } catch (error) {
-            console.error(error);
-        }
-    };
+  useEffect(() => {
+    fetchData();
+    const interval = window.setInterval(fetchData, 8000);
+    return () => window.clearInterval(interval);
+  }, [fetchData]);
 
-    return (
+  const reservedUnits = useMemo(
+    () => products.reduce((total, product) => total + product.reservedQuantity, 0),
+    [products],
+  );
+
+  const handleCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await api.post('/admin/products', newProduct);
+      setNewProduct({ name: '', price: 0, quantity: 10 });
+      setMessage('Product added to inventory.');
+      await fetchData();
+    } catch (error) {
+      setMessage(`Create failed: ${errorMessage(error)}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const updateOrderStatus = async (order: Order, status: OrderStatus) => {
+    setIsSubmitting(true);
+    try {
+      await api.patch(`/orders/${order.id}/status`, {
+        status,
+        note: `Updated by ${user?.username}`,
+      });
+      setMessage(`Order #${order.id} moved to ${status}.`);
+      await fetchData();
+    } catch (error) {
+      setMessage(`Status update failed: ${errorMessage(error)}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
         <div>
-            <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
-                <h1>Admin Inventory</h1>
-                <button onClick={logout} style={{ width: 'auto' }}>Logout</button>
-            </header>
-
-            <section style={{ marginBottom: '2rem' }}>
-                <h3>Add Product</h3>
-                <form onSubmit={handleCreate} style={{ display: 'flex', gap: '1rem', alignItems: 'end' }}>
-                    <div>
-                        <label>Name</label>
-                        <input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} required />
-                    </div>
-                    <div>
-                        <label>Price</label>
-                        <input type="number" value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: Number(e.target.value) })} required />
-                    </div>
-                    <div>
-                        <label>Quantity</label>
-                        <input type="number" value={newProduct.quantity} onChange={e => setNewProduct({ ...newProduct, quantity: Number(e.target.value) })} required />
-                    </div>
-                    <button type="submit" style={{ marginBottom: '0.5rem' }}>Add</button>
-                </form>
-            </section>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
-                <thead>
-                    <tr style={{ background: '#444' }}>
-                        <th style={{ padding: '0.5rem' }}>ID</th>
-                        <th style={{ padding: '0.5rem' }}>Name</th>
-                        <th style={{ padding: '0.5rem' }}>Price</th>
-                        <th style={{ padding: '0.5rem' }}>Stock</th>
-                        <th style={{ padding: '0.5rem' }}>Version</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {products.map(p => (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #444' }}>
-                            <td style={{ padding: '0.5rem' }}>{p.id}</td>
-                            <td style={{ padding: '0.5rem' }}>{p.name}</td>
-                            <td style={{ padding: '0.5rem' }}>${p.price}</td>
-                            <td style={{ padding: '0.5rem' }}>{p.quantity}</td>
-                            <td style={{ padding: '0.5rem' }}>{p.version}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+          <p className="eyebrow">Operations</p>
+          <h1>Inventory and order flow</h1>
+          <p className="muted">Signed in as {user?.username} ({user?.role.replace('ROLE_', '')})</p>
         </div>
-    );
+        <div className="topbar-actions">
+          <a className="button secondary" href="/dashboard">Dashboard</a>
+          <button className="button ghost" onClick={logout}>Logout</button>
+        </div>
+      </header>
+
+      {message && <div className="notice">{message}</div>}
+
+      <section className="metric-strip">
+        <div>
+          <span>Total SKUs</span>
+          <strong>{products.length}</strong>
+        </div>
+        <div>
+          <span>Reserved units</span>
+          <strong>{reservedUnits}</strong>
+        </div>
+        <div>
+          <span>Open orders</span>
+          <strong>{orders.filter((order) => !terminalStatuses.includes(order.status)).length}</strong>
+        </div>
+      </section>
+
+      <section className="dashboard-grid">
+        <div className="panel">
+          <div className="section-heading">
+            <h2>Inventory</h2>
+            <span>{isLoading ? 'Loading' : `${products.length} products`}</span>
+          </div>
+
+          {isAdmin && (
+            <form className="inline-form" onSubmit={handleCreate}>
+              <input
+                value={newProduct.name}
+                onChange={(event) => setNewProduct({ ...newProduct, name: event.target.value })}
+                placeholder="Product name"
+                required
+              />
+              <input
+                min="0.01"
+                step="0.01"
+                type="number"
+                value={newProduct.price}
+                onChange={(event) => setNewProduct({ ...newProduct, price: Number(event.target.value) })}
+                required
+              />
+              <input
+                min="0"
+                type="number"
+                value={newProduct.quantity}
+                onChange={(event) => setNewProduct({ ...newProduct, quantity: Number(event.target.value) })}
+                required
+              />
+              <button className="button primary" disabled={isSubmitting} type="submit">Add</button>
+            </form>
+          )}
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Price</th>
+                  <th>On hand</th>
+                  <th>Reserved</th>
+                  <th>Available</th>
+                  <th>Version</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id}>
+                    <td>{product.name}</td>
+                    <td>{currency.format(product.price)}</td>
+                    <td>{product.quantity}</td>
+                    <td>{product.reservedQuantity}</td>
+                    <td>{product.availableQuantity}</td>
+                    <td>{product.version}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="section-heading">
+            <h2>Order operations</h2>
+            <span>{orders.length} recent</span>
+          </div>
+          <div className="ops-list">
+            {orders.map((order) => (
+              <article className="ops-order" key={order.id}>
+                <div>
+                  <strong>#{order.id} {order.customer}</strong>
+                  <span>{currency.format(order.totalAmount)}</span>
+                </div>
+                <span className={`status ${order.status.toLowerCase()}`}>{order.status}</span>
+                <div className="action-row">
+                  {nextOperationalStatuses(order.status).map((status) => (
+                    <button
+                      className={status === OrderStatus.CANCELLED ? 'button secondary' : 'button primary'}
+                      disabled={isSubmitting}
+                      key={`${order.id}-${status}`}
+                      onClick={() => updateOrderStatus(order, status)}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 };
 
 export default AdminInventoryPage;

@@ -1,4 +1,3 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -16,11 +15,11 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          <Route element={<ProtectedRoute allowedRoles={[Role.ROLE_CUSTOMER, Role.ROLE_ADMIN]} />}>
+          <Route element={<ProtectedRoute allowedRoles={[Role.ROLE_USER, Role.ROLE_MANAGER, Role.ROLE_ADMIN]} />}>
             <Route path="/dashboard" element={<DashboardPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute allowedRoles={[Role.ROLE_ADMIN]} />}>
+          <Route element={<ProtectedRoute allowedRoles={[Role.ROLE_MANAGER, Role.ROLE_ADMIN]} />}>
             <Route path="/admin" element={<AdminInventoryPage />} />
           </Route>
 

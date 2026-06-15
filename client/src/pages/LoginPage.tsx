@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import api from '../api/axios';
 import type { AuthResponse } from '../types/auth';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { Role } from '../types/auth';
 
 const LoginPage = () => {
     const [username, setUsername] = useState('');
@@ -37,7 +38,7 @@ const LoginPage = () => {
             });
             const { token, role } = response.data;
             login(token, trimmedUsername, role);
-            navigate(role === 'ROLE_ADMIN' ? '/admin' : '/dashboard');
+            navigate(role === Role.ROLE_ADMIN || role === Role.ROLE_MANAGER ? '/admin' : '/dashboard');
         } catch (err) {
             if (axios.isAxiosError(err)) {
                 const status = err.response?.status;
@@ -65,8 +66,8 @@ const LoginPage = () => {
     return (
         <div className="auth-container">
             <div className="auth-header">
-                <h2>Welcome Back</h2>
-                <p className="auth-subtitle">Sign in to your NexusFlow account</p>
+                <h2>NexusFlow</h2>
+                <p className="auth-subtitle">Enterprise order processing console</p>
             </div>
             <form onSubmit={handleSubmit} autoComplete="off">
                 <div className="form-group">
@@ -101,6 +102,9 @@ const LoginPage = () => {
             </form>
             <div className="auth-footer">
                 <p>Don't have an account? <Link to="/register">Create Account</Link></p>
+                <div className="demo-credentials">
+                    <p><strong>Demo:</strong> user/user12345, manager/manager123, admin/admin123</p>
+                </div>
             </div>
         </div>
     );

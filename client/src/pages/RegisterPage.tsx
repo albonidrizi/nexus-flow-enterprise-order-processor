@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import api from '../api/axios';
-import { Role } from '../types/auth';
 import type { AuthResponse } from '../types/auth';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
@@ -11,7 +10,6 @@ const RegisterPage = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [role, setRole] = useState<Role>(Role.ROLE_CUSTOMER);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
@@ -40,8 +38,8 @@ const RegisterPage = () => {
             setError('Please enter a password');
             return;
         }
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters long');
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters long');
             return;
         }
         if (password.length > 100) {
@@ -57,12 +55,11 @@ const RegisterPage = () => {
         try {
             const response = await api.post<AuthResponse>('/auth/register', { 
                 username: trimmedUsername, 
-                password, 
-                role 
+                password
             });
             const { token, role: userRole } = response.data;
             login(token, trimmedUsername, userRole);
-            navigate(userRole === 'ROLE_ADMIN' ? '/admin' : '/dashboard');
+            navigate('/dashboard');
         } catch (err) {
             if (axios.isAxiosError(err)) {
                 const status = err.response?.status;
@@ -97,7 +94,7 @@ const RegisterPage = () => {
         <div className="auth-container">
             <div className="auth-header">
                 <h2>Create Account</h2>
-                <p className="auth-subtitle">Join NexusFlow and start ordering</p>
+                <p className="auth-subtitle">Create a standard user account</p>
             </div>
             <form onSubmit={handleSubmit} autoComplete="off">
                 <div className="form-group">
@@ -120,7 +117,7 @@ const RegisterPage = () => {
                         type="password" 
                         value={password} 
                         onChange={(e) => setPassword(e.target.value)} 
-                        placeholder="Create a password (min. 6 characters)"
+                        placeholder="Create a password (min. 8 characters)"
                         disabled={isLoading}
                         autoComplete="off"
                     />
@@ -136,19 +133,6 @@ const RegisterPage = () => {
                         disabled={isLoading}
                         autoComplete="off"
                     />
-                </div>
-                <div className="form-group">
-                    <label htmlFor="role">Account Type</label>
-                    <select 
-                        id="role"
-                        value={role} 
-                        onChange={(e) => setRole(e.target.value as Role)} 
-                        disabled={isLoading}
-                        className="select-input"
-                    >
-                        <option value={Role.ROLE_CUSTOMER}>Customer</option>
-                        <option value={Role.ROLE_ADMIN}>Administrator</option>
-                    </select>
                 </div>
                 {error && <div className="error-message">{error}</div>}
                 <button type="submit" disabled={isLoading} className={isLoading ? 'loading' : ''}>
