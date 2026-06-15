@@ -27,6 +27,10 @@ jobs:
 
       - name: Build and test
         working-directory: server
+        env:
+          JWT_SECRET: ci-test-secret-key-must-be-at-least-32-characters
+          SPRING_DATASOURCE_PASSWORD: ci-postgres-password
+          SPRING_RABBITMQ_PASSWORD: ci-rabbitmq-password
         run: mvn -B verify
 
   frontend:
@@ -39,7 +43,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
@@ -50,3 +54,7 @@ jobs:
       - name: Build
         working-directory: client
         run: npm run build
+
+      - name: Lint
+        working-directory: client
+        run: npm run lint

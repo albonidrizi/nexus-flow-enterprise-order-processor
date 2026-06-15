@@ -1,125 +1,188 @@
-# NexusFlow: Enterprise Order Processor
+# NexusFlow Enterprise Order Processor
 
-NexusFlow is a **senior-level enterprise order processing platform** engineered for high concurrency, scalability, and data integrity. It orchestrates a secure Spring Boot backend with a responsive React frontend, utilizing event-driven architecture to handle complex workflows efficiently.
+NexusFlow is a Spring Boot + React order-processing system that demonstrates enterprise backend design, secure role-based workflows, PostgreSQL persistence, and RabbitMQ-driven async order handling.
 
-## 🌟 Key Features
+## Problem It Solves
 
-### 1. Robust Data Integrity (Optimistic Locking)
-- **Problem**: In high-concurrency environments, multiple users might attempt to purchase the last item simultaneously ("The Lost Update" problem).
-- **Solution**: Implemented JPA `@Version` based optimistic locking on `Product` entities.
-- **Outcome**: Ensures strict ACID compliance. If concurrent transactions conflict, the system detects the version mismatch and handles the `ObjectOptimisticLockingFailureException` gracefully, preventing negative stock and ensuring data consistency.
+Enterprise order systems need to validate inventory, reserve stock, process payments, expose operational order workflows, and keep an audit trail without letting controllers become business-logic dumping grounds. NexusFlow models that flow in a compact portfolio project that is realistic enough for senior Java/Spring interviews without pretending to be a full ERP.
 
-### 2. Event-Driven Architecture (RabbitMQ)
-- **Decoupling**: Order placement is decoupled from heavy post-processing tasks (inventory sync, notifications, analytics).
-- **Resilience**: Uses **RabbitMQ** to buffer events. If downstream services fail, messages persist in the `order_placed_queue` for retry, ensuring zero data loss.
-- **Performance**: shifting heavy lifting to async workers reduces the Order API response time to ~100ms, compared to seconds in synchronous systems.
+## Tech Stack
 
-### 3. Enterprise-Grade Security
-- **Stateless Authentication**: Secured via **Spring Security** and **JWT (JSON Web Tokens)**.
-- **Role-Based Access Control (RBAC)**: Fine-grained permissions for `User` and `Admin` roles protecting sensitive endpoints.
+- Backend: Java 17, Spring Boot 3.2, Spring Web, Spring Data JPA, Spring Security, JWT, Spring AMQP, Actuator, OpenAPI
+- Frontend: React 19, TypeScript, Vite, React Router, Axios, vanilla CSS
+- Data and infrastructure: PostgreSQL 15, Flyway, RabbitMQ Management, Docker Compose
+- Testing: JUnit 5, Mockito, Spring MVC tests, Spring Data JPA tests, Testcontainers for PostgreSQL when Docker is available
+- CI: GitHub Actions for backend verification, frontend build, and frontend lint
 
-### 4. Comprehensive Input Validation
-- **Bean Validation**: All DTOs validated with `@Valid`, `@NotNull`, `@Min`, `@Max`, `@NotBlank` annotations.
-- **Detailed Error Messages**: User-friendly validation error responses with field-specific messages.
+## Architecture
 
-### 5. Advanced Exception Handling
-- **Custom Exceptions**: `ResourceNotFoundException`, `InsufficientStockException` for business logic errors.
-- **Optimistic Locking Handler**: Graceful handling of concurrent modification conflicts.
-- **Structured Error Responses**: Consistent error format with timestamp, status, message, and validation errors.
+The backend uses a pragmatic package structure:
 
-### 6. API Documentation (Swagger/OpenAPI)
-- **Interactive API Explorer**: Full REST API documentation with try-it-out functionality.
-- **JWT Integration**: Built-in authentication support in Swagger UI.
+- `domain/model`: JPA entities and enums
+- `application/service`: business rules, state machine, metrics
+- `infrastructure/persistence`: Spring Data repositories
+- `infrastructure/messaging`: transactional outbox, RabbitMQ configuration, message DTOs, publisher, consumer
+- `web/controller` and `web/dto`: REST API and DTO boundaries
+- `security`, `config`, `exception`: JWT/RBAC, CORS, request correlation, health, structured errors
 
-### 7. Observability & Monitoring
-- **Spring Actuator**: Health checks, metrics, and application monitoring endpoints.
-- **Structured Logging**: SLF4J with contextual logging across all services.
-
-## 🏗 System Architecture
-
-The system follows a microservices-inspired architecture managed via Docker Compose:
-
-1.  **Frontend**: React (Vite) + TypeScript for a type-safe, performant UI.
-2.  **Backend**: Spring Boot 3.2 REST API.
-3.  **Database**: PostgreSQL 15 (Relational/ACID).
-4.  **Message Broker**: RabbitMQ (Async messaging).
-
-### Architecture Diagram
 ```mermaid
-graph TD
-    Client[React Client] -->|REST API| Server[Spring Boot Server]
-    Server -->|Read/Write| DB[(PostgreSQL)]
-    Server -->|Publish Event| MQ[RabbitMQ]
-    MQ -->|Consume Event| Listener["Async Worker (Internal)"]
+flowchart LR
+  User[React UI] --> API[Spring Boot REST API]
+  API --> Auth[JWT + RBAC]
+  API --> Service[Order Application Service]
+  Service --> DB[(PostgreSQL + Flyway)]
+  Service --> Outbox[Transactional Outbox]
+  Outbox --> DB
+  Outbox --> MQ[RabbitMQ Topic Exchange]
+  MQ --> Worker[Async Order Worker]
+  Worker --> Service
+  API --> Actuator[Actuator + Metrics]
 ```
 
-## 🛠 Tech Stack
+## Order Lifecycle
 
-### Backend
-- **Framework**: Spring Boot 3.2
-- **Language**: Java 17
-- **Data**: Spring Data JPA, PostgreSQL
-- **Security**: Spring Security, JWT (io.jsonwebtoken)
-- **Messaging**: Spring AMQP (RabbitMQ)
-- **Tools**: Lombok, Maven
+```mermaid
+stateDiagram-v2
+  [*] --> CREATED
+  CREATED --> VALIDATED: stock reserved
+  VALIDATED --> PAID: payment captured
+  PAID --> PROCESSING: async worker
+  PROCESSING --> SHIPPED: async worker or manager
+  SHIPPED --> DELIVERED: manager
+  CREATED --> CANCELLED
+  VALIDATED --> CANCELLED
+  PAID --> CANCELLED
+  CREATED --> FAILED
+  VALIDATED --> FAILED
+  PAID --> FAILED
+  PROCESSING --> FAILED
+```
 
-### Frontend
-- **Framework**: React 19
-- **Build Tool**: Vite 7
-- **Language**: TypeScript 5
-- **Routing**: React Router DOM 7
-- **HTTP Client**: Axios
-- **Styling**: Vanilla CSS (Modular & Responsive)
+## Key Features
 
-## 🚀 Getting Started
+- Validated order creation with stock reservation and idempotency key support
+- Payment simulation that commits or releases reserved inventory
+- Enforced order status transitions with clear `409 Conflict` responses
+- Order audit history for lifecycle changes with actor and correlation ID
+- Paged, filterable, sortable order listing
+- Flyway-managed database schema
+- Transactional outbox for RabbitMQ status-change events
+- RabbitMQ durable queue and dead-letter queue
+- Async worker that advances paid orders into processing and shipped states
+- JWT authentication with `USER`, `MANAGER`, and `ADMIN` roles
+- BCrypt password hashing and seeded demo users
+- DTO-based REST API responses instead of leaking JPA entity graphs
+- Structured error responses with validation details and correlation IDs
+- Actuator health and order-processing health indicator
+- React dashboard for order creation, payment, cancellation, and history
+- Operations UI for inventory visibility and staff order transitions
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Required)
-- Java 17+ & Node.js 18+ (Optional, for local non-Docker dev)
+## Security
 
-### Deployment (Recommended)
-Run the entire stack with a single command:
+- Public endpoints: `/api/auth/register`, `/api/auth/login`, Swagger, API docs, health
+- Authenticated endpoints: product list, order creation/list/detail/payment/status
+- Staff endpoints: inventory and operational order actions
+- Admin-only endpoints: create/update/delete products
+- Sensitive values are read from environment variables; see `.env.example`
+- Public registration creates `ROLE_USER` only; staff users are seeded for local demo
+
+## Async Processing
+
+When an order reaches `PAID`, the order transaction stores an `ORDER_STATUS_CHANGED` message in `outbox_events` with a correlation ID. A scheduled relay publishes pending outbox rows to the `nexusflow.orders` topic exchange and marks them `PUBLISHED`, `FAILED`, or `DEAD` based on retry outcome. The RabbitMQ consumer listens on `nexusflow.order-events` and advances paid orders to `PROCESSING` and then `SHIPPED`. Failed RabbitMQ deliveries route to `nexusflow.order-events.dlq`.
+
+## Run Locally
+
+Prerequisites: Docker Desktop.
 
 ```bash
-docker-compose up --build
+docker compose --env-file .env.example up --build
 ```
 
-**Access Points**:
-- **Frontend**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:8080](http://localhost:8080)
-- **Swagger UI**: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-- **API Docs**: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
-- **Health Check**: [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
-- **Metrics**: [http://localhost:8080/actuator/metrics](http://localhost:8080/actuator/metrics)
-- **RabbitMQ Dashboard**: [http://localhost:15672](http://localhost:15672) (User: `guest`, Pass: `guest`)
+Access points:
 
-### Local Development (Optional)
-- Backend: `cd server && mvn spring-boot:run`
-- Frontend: `cd client && npm install && npm run dev`
-- Tests: `cd server && mvn test`
-- Health check: `curl http://localhost:8080/actuator/health`
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8080
+- Swagger UI: http://localhost:8080/swagger-ui.html
+- API docs: http://localhost:8080/api-docs
+- Health: http://localhost:8080/actuator/health
+- RabbitMQ dashboard: http://localhost:15672
 
-> **Note:** Use JDK 17 for local Maven builds. Using newer JDKs (e.g., 21/23) can trigger `TypeTag :: UNKNOWN` javac errors with Lombok; Docker Compose already uses the correct JDK.
+Demo credentials from seed data:
 
-### API Documentation (Swagger)
-1) Start services, then open [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-2) Click **Authorize** and paste your JWT (no `Bearer ` prefix needed)
-3) Try any endpoint directly from the UI
+- User: `user` / `user12345`
+- Manager: `manager` / `manager123`
+- Admin: `admin` / `admin123`
+- RabbitMQ UI: values from `.env.example` (`nexus` / `nexus_dev_password`)
 
-### Validation & Errors
-- All request DTOs are validated (`@Valid`, `@NotNull`, `@Min`, `@NotBlank`)
-- Errors return a structured payload: `timestamp`, `status`, `error`, `message`, `path`, and `validationErrors`
-- Concurrency conflicts return HTTP 409 with guidance to retry
+For local non-Docker backend work, set `JWT_SECRET`, `SPRING_DATASOURCE_PASSWORD`, and `SPRING_RABBITMQ_PASSWORD` before running `mvn spring-boot:run`.
 
-### Monitoring
-- Health: `/actuator/health`
-- Metrics: `/actuator/metrics`
-- Prometheus scrape: `/actuator/prometheus`
+## API Highlights
 
-### Default Roles
-- **User**: Register a new account via the UI.
-- **Admin**: Manually update the database `users` table to promote a user to `ROLE_ADMIN` to access inventory management features.
+- `POST /api/orders` with `Idempotency-Key`
+- `GET /api/orders?status=VALIDATED&size=10&sort=createdAt,desc`
+- `GET /api/orders/{id}`
+- `POST /api/orders/{id}/payments`
+- `PATCH /api/orders/{id}/status`
+- `GET /api/products`
+- `GET /api/admin/inventory`
+- `POST /api/admin/products`
 
-## 🧪 Future Improvements
-- **Integration Testing**: Add Testcontainers to simulate real PostgreSQL/RabbitMQ instances during CI/CD.
-- **Observability**: Integrate Prometheus and Grafana for metrics monitoring.
+## Testing
+
+```bash
+cd server
+mvn test
+
+cd ../client
+npm ci
+npm run lint
+npm run build
+```
+
+Current automated coverage includes:
+
+- Order state transitions, idempotency, stock reservation, payment commit/release
+- Transactional outbox enqueueing and relay publish/retry behavior
+- Product service validation paths
+- Controller validation, authentication requirement, payment/status endpoints
+- JPA optimistic locking
+- PostgreSQL Testcontainers persistence check when Docker is available
+
+On the current machine, the Testcontainers test skipped because Docker Desktop was not exposing a usable Docker engine. The rest of the backend suite passed.
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs:
+
+- Backend: `mvn -B verify`
+- Frontend: `npm ci`, `npm run build`, `npm run lint`
+
+No README badges are included because badges should only be added after the workflow runs successfully on the repository remote.
+
+## Screenshots
+
+Screenshots are not committed yet. Recommended captures after starting Docker Compose:
+
+- Login page with demo credential note
+- User dashboard showing product availability and order history
+- Operations page showing inventory reservations and order transitions
+- Swagger UI with authorized JWT
+- RabbitMQ queue view for `nexusflow.order-events`
+
+## Interview Talking Points
+
+- Why order transitions belong in an application service/state machine instead of controllers
+- How optimistic locking protects stock updates under concurrent orders
+- Why stock is reserved at validation and committed at payment capture
+- How idempotency protects retries from duplicate order creation
+- How the transactional outbox prevents order commits from depending on RabbitMQ availability
+- How RBAC is split between endpoint security and business rules
+- How structured errors and correlation IDs improve debugging
+
+## What I Would Improve Next
+
+- Add RabbitMQ Testcontainers coverage
+- Add a replay/admin endpoint for dead outbox events
+- Add refresh tokens and token revocation for a production auth model
+- Add Playwright UI tests and committed screenshots
+- Add Prometheus/Grafana dashboards for the custom order metrics
