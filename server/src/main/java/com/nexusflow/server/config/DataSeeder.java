@@ -1,10 +1,10 @@
 package com.nexusflow.server.config;
 
-import com.nexusflow.server.entity.Product;
-import com.nexusflow.server.entity.Role;
-import com.nexusflow.server.entity.User;
-import com.nexusflow.server.repository.ProductRepository;
-import com.nexusflow.server.repository.UserRepository;
+import com.nexusflow.server.domain.model.Product;
+import com.nexusflow.server.domain.model.Role;
+import com.nexusflow.server.domain.model.User;
+import com.nexusflow.server.infrastructure.persistence.ProductRepository;
+import com.nexusflow.server.infrastructure.persistence.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -28,6 +28,8 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedAdmin();
+        seedManager();
+        seedUser();
         seedProducts();
     }
 
@@ -46,6 +48,36 @@ public class DataSeeder implements CommandLineRunner {
         );
     }
 
+    private void seedManager() {
+        userRepository.findByUsername("manager").ifPresentOrElse(
+                user -> log.info("Manager user already exists"),
+                () -> {
+                    User manager = User.builder()
+                            .username("manager")
+                            .password(passwordEncoder.encode("manager123"))
+                            .role(Role.ROLE_MANAGER)
+                            .build();
+                    userRepository.save(manager);
+                    log.info("Seeded default manager user (manager/manager123)");
+                }
+        );
+    }
+
+    private void seedUser() {
+        userRepository.findByUsername("user").ifPresentOrElse(
+                user -> log.info("Demo user already exists"),
+                () -> {
+                    User demoUser = User.builder()
+                            .username("user")
+                            .password(passwordEncoder.encode("user12345"))
+                            .role(Role.ROLE_USER)
+                            .build();
+                    userRepository.save(demoUser);
+                    log.info("Seeded default user (user/user12345)");
+                }
+        );
+    }
+
     private void seedProducts() {
         if (productRepository.count() > 0) {
             log.info("Products already seeded");
@@ -53,10 +85,10 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         List<Product> products = List.of(
-                Product.builder().name("Laptop Pro 14").price(new BigDecimal("1899.00")).quantity(15).build(),
-                Product.builder().name("Noise-Canceling Headphones").price(new BigDecimal("299.00")).quantity(40).build(),
-                Product.builder().name("4K Monitor 27\"").price(new BigDecimal("449.00")).quantity(25).build(),
-                Product.builder().name("Mechanical Keyboard").price(new BigDecimal("129.00")).quantity(35).build()
+                Product.builder().name("Laptop Pro 14").price(new BigDecimal("1899.00")).quantity(15).reservedQuantity(0).build(),
+                Product.builder().name("Noise-Canceling Headphones").price(new BigDecimal("299.00")).quantity(40).reservedQuantity(0).build(),
+                Product.builder().name("4K Monitor 27\"").price(new BigDecimal("449.00")).quantity(25).reservedQuantity(0).build(),
+                Product.builder().name("Mechanical Keyboard").price(new BigDecimal("129.00")).quantity(35).reservedQuantity(0).build()
         );
 
         productRepository.saveAll(products);

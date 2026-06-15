@@ -4,26 +4,38 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nexusdb}
     username: ${SPRING_DATASOURCE_USERNAME:nexus}
-    password: ${SPRING_DATASOURCE_PASSWORD:password}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+      ddl-auto: validate
+  flyway:
+    enabled: true
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD}
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+  outbox:
+    enabled: ${APP_OUTBOX_ENABLED:true}
+    publish-delay-ms: ${APP_OUTBOX_PUBLISH_DELAY_MS:5000}
+    batch-size: ${APP_OUTBOX_BATCH_SIZE:25}
+    max-attempts: ${APP_OUTBOX_MAX_ATTEMPTS:8}
 
 seed:
   enabled: ${SEED_ENABLED:true}
 
 jwt:
-  secret: ${JWT_SECRET:9a4f2c8d3b7a1e6f45c8a0b3f2e1d5c9e8h7g6f5d4s3a2q1w0e9r8t7y6u5i4o3p2l1k0j}
+  secret: ${JWT_SECRET}
   expiration: 86400000 # 24 hours
+
+logging:
+  pattern:
+    level: "%5p [correlationId:%X{correlationId:-}]"
 
 # Actuator Configuration
 management:

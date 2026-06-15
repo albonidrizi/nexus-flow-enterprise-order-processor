@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -27,7 +28,7 @@ public class GlobalExceptionHandler {
         
         Map<String, String> validationErrors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
+            String fieldName = error instanceof FieldError fieldError ? fieldError.getField() : error.getObjectName();
             String errorMessage = error.getDefaultMessage();
             validationErrors.put(fieldName, errorMessage);
         });
@@ -40,6 +41,7 @@ public class GlobalExceptionHandler {
                 .error("Validation Failed")
                 .message("Input validation error")
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .validationErrors(validationErrors)
                 .build();
 
@@ -59,6 +61,7 @@ public class GlobalExceptionHandler {
                 .error("Not Found")
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
@@ -77,9 +80,67 @@ public class GlobalExceptionHandler {
                 .error("Insufficient Stock")
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ErrorResponse> handleBusinessRuleException(
+            BusinessRuleException ex,
+            HttpServletRequest request) {
+
+        log.warn("Business rule violation on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.CONFLICT.value())
+                .error("Business Rule Violation")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .correlationId(correlationId(request))
+                .build();
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateResourceException(
+            DuplicateResourceException ex,
+            HttpServletRequest request) {
+
+        log.warn("Duplicate resource on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.CONFLICT.value())
+                .error("Duplicate Resource")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .correlationId(correlationId(request))
+                .build();
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
+            IllegalArgumentException ex,
+            HttpServletRequest request) {
+
+        log.warn("Bad request on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .correlationId(correlationId(request))
+                .build();
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
@@ -95,6 +156,7 @@ public class GlobalExceptionHandler {
                 .error("Concurrency Conflict")
                 .message("The resource was updated by another transaction. Please retry your request.")
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
@@ -113,9 +175,29 @@ public class GlobalExceptionHandler {
                 .error("Authentication Failed")
                 .message("Invalid username or password")
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+            AccessDeniedException ex,
+            HttpServletRequest request) {
+
+        log.warn("Access denied on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .error("Forbidden")
+                .message("You do not have permission to access this resource")
+                .path(request.getRequestURI())
+                .correlationId(correlationId(request))
+                .build();
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
     }
 
     @ExceptionHandler(RuntimeException.class)
@@ -129,8 +211,9 @@ public class GlobalExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Internal Server Error")
-                .message(ex.getMessage())
+                .message("An unexpected error occurred. Please try again later.")
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -149,8 +232,14 @@ public class GlobalExceptionHandler {
                 .error("Internal Server Error")
                 .message("An unexpected error occurred. Please try again later.")
                 .path(request.getRequestURI())
+                .correlationId(correlationId(request))
                 .build();
 
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private String correlationId(HttpServletRequest request) {
+        Object correlationId = request.getAttribute("correlationId");
+        return correlationId == null ? null : correlationId.toString();
     }
 }
